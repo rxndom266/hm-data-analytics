@@ -1,8 +1,9 @@
 # hm-data-analytics
 
-# to connect to AWS
-# run this code in a
-# DataBricks notebook
+to get access key for AWS: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_root-user.html#id_root-user_manage_add-key
+
+
+to connect to AWS, run this code in a DataBricks notebook:
 
 import urllib
 access_key="<your-AWS-access-key>"
