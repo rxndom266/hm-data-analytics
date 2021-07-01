@@ -1,0 +1,63 @@
+# configuration JSON
+transform_config = {
+    "facebook_format": {
+        "header": "true",
+        "inferSchema": "true",
+        "field_mapping": {
+            "source_person_id":"pid",
+            "first_name": "firstName",
+            "last_name": "lastName",
+            "age":"age",
+            "birthdate":"birthdate",
+            "street_address":"street_address",
+            "gender":"gender",
+            "email":"email",
+            "country":"country",
+            "city":"city",
+            "phone":"phone",
+            "pincode":"postalCode",
+            "mastered_person_id":""
+        },
+      "meta_data":{
+            "data_source":"Facebook",
+            "file_name":"facebook.csv",
+            "created_datetime":t.strftime(frm),
+            "updated_datetime":t.strftime(frm),
+      }
+      
+    },
+    "instagram_format": {
+          "header": "true",
+          "inferSchema": "true",
+          "field_mapping": {
+              "first_name": "firstName",
+              "last_name": "lastName",
+              "age":"age",
+              "dob":"birthdate"
+          }
+  }
+}
+
+# reading sample Facebook data CSV file
+fbRAW = spark.read.csv('dbfs:/mnt/facebook2/facebook1.csv', header='true', inferSchema='true')
+fbRAW.show()
+
+# function to transform data
+def transform_data(inp, config):
+  from pyspark.sql.functions import lit
+  for k, v in config['field_mapping'].items():
+    if v!="":
+      inp = inp.withColumnRenamed(v, k)
+    else:
+      inp = inp.withColumn(k, lit(None))
+  return inp
+  
+# function to insert metadata
+def insert_meta_data(inp, config):
+  from pyspark.sql.functions import lit
+  for k, v in config['meta_data'].items():
+    inp = inp.withColumn(k, lit(v))
+  return inp
+  
+fb_trans = transform_data(fbRAW, transform_config['facebook_format'])
+fb_trans = insert_meta_data(fb_trans, transform_config['facebook_format'])
