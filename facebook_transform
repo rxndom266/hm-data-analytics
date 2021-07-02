@@ -27,7 +27,15 @@ transform_config = {
        "clean_data_regex": {
             "email": "(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)",
             "phone": "^\s*(?:\+?(\d{1,3}))?[-. (]*(\d{3})[-. )]*(\d{3})[-. ]*(\d{4})(?: *x(\d+))?\s*$"
-        }
+        },
+         "notnull_col": {
+        "birthdate": "",
+        "phone": "",
+        "first_name": "",
+        "last_name":"",
+        "email": "",
+        "pincode": ""
+         }
       
     },
     "instagram_format": {
@@ -63,14 +71,19 @@ def insert_meta_data(inp, config):
     inp = inp.withColumn(k, lit(v))
   return inp
   
- def clean_data(df,config):
-     # cleaning phone and email
+def clean_data(df,config):
+    # removing rows with null values
+     for k,v in config['notnull_col'].items():
+      df=df.na.drop(subset=k)
+    # cleaning phone and email
      for k,v in config['clean_data_regex'].items():
-       pattern=r'{}'.format(v)
-       df=df.filter(df[k].rlike(pattern))
+      pattern=r'{}'.format(v)
+      df=df.filter(df[k].rlike(pattern))
      return df
     
-new_d=clean_data(fbRAW,transform_config['facebook_format'])
   
 fb_trans = transform_data(fbRAW, transform_config['facebook_format'])
 fb_trans = insert_meta_data(fb_trans, transform_config['facebook_format'])
+
+
+new_d=clean_data(fb_trans,transform_config['facebook_format'])
