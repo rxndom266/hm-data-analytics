@@ -1,10 +1,33 @@
+# pyspark configuration
+# run at the top
+spark.conf.set("spark.sql.legacy.parquet.datetimeRebaseModeInRead", "LEGACY")
+spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+spark.conf.set("spark.sql.storeAssignmentPolicy", "LEGACY")
+spark.conf.set("spark.sql.mapKeyDedupPolicy", "LAST_WIN")
+spark.conf.set("spark.sql.legacy.json.allowEmptyString.enabled", "TRUE")
+spark.conf.set("spark.sql.legacy.createEmptyCollectionUsingStringType", "TRUE")
+spark.conf.set("spark.sql.legacy.allowHashOnMapType", "TRUE")
+spark.conf.set("spark.sql.adaptive.enabled", "TRUE")
+spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "TRUE")
+spark.conf.set("spark.sql.adaptive.localShuffleReader.enabled", "TRUE")
+spark.conf.set("spark.sql.adaptive.skewJoin.enabled", "TRUE")
+spark.conf.set("spark.sql.legacy.followThreeValuedLogicInArrayExists", "TRUE")
+spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "TRUE")
+spark.conf.set("spark.sql.execution.arrow.pyspark.fallback.enabled", "TRUE")
+spark.conf.set("spark.databricks.io.cache.enabled", "TRUE")
+
+
 # configuration JSON
+from datetime import datetime, date
+t = datetime.now()
+frm = "%Y-%m-%d %H:%M:%S"
+
 transform_config = {
     "facebook_format": {
         "header": "true",
         "inferSchema": "true",
         "field_mapping": {
-            "source_person_id":"pid",
+            "source_person_id":"facebookID",
             "first_name": "firstName",
             "last_name": "lastName",
             "age":"age",
@@ -24,18 +47,26 @@ transform_config = {
             "created_datetime":t.strftime(frm),
             "updated_datetime":t.strftime(frm),
       },
-       "clean_data_regex": {
-            "email": "(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)",
-            "phone": "^\s*(?:\+?(\d{1,3}))?[-. (]*(\d{3})[-. )]*(\d{3})[-. ]*(\d{4})(?: *x(\d+))?\s*$"
-        },
-         "notnull_col": {
-        "birthdate": "",
-        "phone": "",
-        "first_name": "",
-        "last_name":"",
-        "email": "",
-        "pincode": ""
-         }
+      "required":[
+        "source_person_id",
+        "first_name",
+        "last_name",
+        "birthdate",
+        "email",
+        "street_address",
+        "pincode"
+      ],
+      "master_data":[
+        "first_name",
+        "last_name", 
+        "birthdate",
+        "street_address",
+        "pincode"
+      ],
+      "clean_data":{
+        "email":"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)",
+        "phone": "^\s*(?:\+?(\d{1,3}))?[-. (]*(\d{3})[-. )]*(\d{3})[-. ]*(\d{4})(?: *x(\d+))?\s*$"
+      }
       
     },
     "instagram_format": {
@@ -54,14 +85,16 @@ transform_config = {
 fbRAW = spark.read.csv('dbfs:/mnt/facebook2/facebook1.csv', header='true', inferSchema='true')
 fbRAW.show()
 
-# function to transform data
-def transform_data(inp, config):
-  from pyspark.sql.functions import lit
+# function to format data
+def format_data(inp, config):
+  from pyspark.sql.functions import lit, to_date, col, date_format
   for k, v in config['field_mapping'].items():
     if v!="":
       inp = inp.withColumnRenamed(v, k)
     else:
       inp = inp.withColumn(k, lit(None))
+      inp = inp.withColumn('birthdate', to_date(inp.birthdate, 'yyyy-MM-dd'))
+      inp = inp.withColumn('age', date.today().year - date_format(col("birthdate"), "Y"))
   return inp
   
 # function to insert metadata
@@ -70,20 +103,27 @@ def insert_meta_data(inp, config):
   for k, v in config['meta_data'].items():
     inp = inp.withColumn(k, lit(v))
   return inp
+
+# function to cleanse data
+# please add a way to insert error records into a separate DataFrame with error_type field
+def clean_data(df, config):
+  import re
+  # dropping data with null values in required fields
+  for k in config['required']:
+    df = df.where(df[k].isNotNull())
+  # check for validity of email
+  for k, v in config['clean_data'].items():
+    ptr = r'{}'.format(v)
+    df = df.filter(df[k].rlike(ptr))
+  return df
   
-def clean_data(df,config):
-    # removing rows with null values
-     for k,v in config['notnull_col'].items():
-      df=df.na.drop(subset=k)
-    # cleaning phone and email
-     for k,v in config['clean_data_regex'].items():
-      pattern=r'{}'.format(v)
-      df=df.filter(df[k].rlike(pattern))
-     return df
+#final transform and cleanse layer
+def transform_layer(inp, config):
+  inp = format_data(inp, config)
+  inp = clean_data(inp, config)
+  inp = insert_meta_data(inp, config)
+  inp = master_data(inp, config)
+  return inp
     
   
-fb_trans = transform_data(fbRAW, transform_config['facebook_format'])
-fb_trans = insert_meta_data(fb_trans, transform_config['facebook_format'])
-
-
-new_d=clean_data(fb_trans,transform_config['facebook_format'])
+fb_trans = transform_layer(fbRAW, transform_config['facebook_format'])
