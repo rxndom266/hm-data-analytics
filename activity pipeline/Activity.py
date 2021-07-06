@@ -117,7 +117,11 @@ class Activity:
               "email_clicked_through_url",
               "campaign_id" 
           ]
-      }
+      },
+    "url_validation":[
+            "email_web_url",
+            "email_clicked_through_url"
+        ]
   }
   # act_type is either 'email_sent', 'email_open' or 'email_clickthrough' for now
   def __init__(self, act_type):
@@ -145,6 +149,24 @@ class Activity:
     display(self.error_df)
     return df
   
+   #validating url
+    def validate_url(self,df):
+        import re
+        from pyspark.sql.functions import *
+        first = "^(?:http|ftp)s?://"
+        domain = "(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"
+        local_h = "localhost|"
+        ip = "\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+        port = "(?::\d+)?"
+        end = "(?:/?|[/?]\S+)$"
+        pattern = r'{}'.format(first, domain, local_h, ip, port, end, re.IGNORECASE)
+        #df1 = df1.filter(df1['email_web_url'].rlike(pattern))
+        for k in self.config['url_validation']:
+            err = df.where(~df[k].rlike(pattern)).withColumn('error',lit("wrong url format"))
+            df = df.where(df[k].rlike(pattern))
+            self.error_df=self.error_df.union(err)
+        return df
+      
   def persist(self, df, name):
     # function to convert to delta table
   def show_errors(self):
