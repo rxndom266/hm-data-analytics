@@ -162,8 +162,9 @@ class Activity:
         pattern = r'{}'.format(first, domain, local_h, ip, port, end, re.IGNORECASE)
         #df1 = df1.filter(df1['email_web_url'].rlike(pattern))
         for k in self.config['url_validation']:
-            err = df.where(~df[k].rlike(pattern)).withColumn('error',lit("wrong url format"))
+            err = df
             df = df.where(df[k].rlike(pattern))
+            err = err.subtract(df).withColumn('error_type',lit('wrong '+k.upper()))
             self.error_df=self.error_df.union(err)
         return df
       
