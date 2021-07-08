@@ -310,7 +310,7 @@ class Activity:
       ]
     },
     "validate_phone":{
-      "pattern":'\b[0-9]{10}\b',
+      "pattern":'^(\+\d{1,2}\s)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$',
       "fields":[
         'phone_number_from',
         'phone_number_to',
