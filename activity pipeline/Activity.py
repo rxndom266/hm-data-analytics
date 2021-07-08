@@ -304,7 +304,7 @@ class Activity:
       ]
     },
     "validate_email":{
-      "pattern":'\b[A-Za-z0-9._-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+      "pattern":'(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)',
       "fields":[
         'primary_email'
       ]
