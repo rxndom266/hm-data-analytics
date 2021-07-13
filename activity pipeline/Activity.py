@@ -1,7 +1,8 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-# from delta.tables import *
+from delta.tables import *
+from daettime import dattime
 # from pyspark import SparkSession
-from pyspark.sql.functions import col, lit, to_date, trim, regexp_replace
+from pyspark.sql.functions import col, lit, to_date, trim, regexp_replace, md5, concat, date_format, coalesce, current_datetime
 import re
 
 # spark = SparkSession.builder.getOrCreate()
@@ -10,8 +11,9 @@ class Activity:
   schema = StructType([
       StructField('email_event_id', StringType(), True),
       StructField('mastered_person_id', StringType(), True),
-      StructField('source_person_id', StringType(), True),
+      StructField('source_person_id', StringType(), False),
       StructField('source_activity_id', StringType(), True),
+      StructField('data_source', StringType(), False),
       StructField('subject_line', StringType(), True),
       StructField('asset_id', StringType(), True),
       StructField('asset_name', StringType(), True),
@@ -35,6 +37,8 @@ class Activity:
       StructField('landing_page_url', StringType(), True),
       StructField('page_visited', StringType(), True),
       StructField('number_of_pages', StringType(), True),
+      StructField('start_datetime', StringType(), True),
+      StructField('end_datetime', StringType(), True),
       StructField('first_name', StringType(), True),
       StructField('last_name', StringType(), True),
       StructField('street_address_1', StringType(), True),
@@ -45,15 +49,17 @@ class Activity:
       StructField('birth_date', StringType(), True),
       StructField('home_phone', StringType(), True),
       StructField('primary_email', StringType(), True),
-      StructField('start_datetime', StringType(), True),
-      StructField('end_datetime', StringType(), True),
       StructField('base_activity_type', StringType(), True),
+      StructField('base_activity_id', StringType(), True),
+      StructField('create_datetime', StringType(), True),
+      StructField('update_datetime', StringType(), True)
   ])
   errschema = StructType([
       StructField('email_event_id', StringType(), True),
       StructField('mastered_person_id', StringType(), True),
-      StructField('source_person_id', StringType(), True),
+      StructField('source_person_id', StringType(), False),
       StructField('source_activity_id', StringType(), True),
+      StructField('data_source', StringType(), False),
       StructField('subject_line', StringType(), True),
       StructField('asset_id', StringType(), True),
       StructField('asset_name', StringType(), True),
@@ -77,6 +83,8 @@ class Activity:
       StructField('landing_page_url', StringType(), True),
       StructField('page_visited', StringType(), True),
       StructField('number_of_pages', StringType(), True),
+      StructField('start_datetime', StringType(), True),
+      StructField('end_datetime', StringType(), True),
       StructField('first_name', StringType(), True),
       StructField('last_name', StringType(), True),
       StructField('street_address_1', StringType(), True),
@@ -87,11 +95,13 @@ class Activity:
       StructField('birth_date', StringType(), True),
       StructField('home_phone', StringType(), True),
       StructField('primary_email', StringType(), True),
-      StructField('start_datetime', StringType(), True),
-      StructField('end_datetime', StringType(), True),
       StructField('base_activity_type', StringType(), True),
+      StructField('base_activity_id', StringType(), True),
+      StructField('create_datetime', StringType(), True),
+      StructField('update_datetime', StringType(), True),
       StructField('error_type', StringType(), False)
   ])
+  emptyCDM = spark.createDataFrame(emptyRDD, schema)
   config = {   
     "args":{
       "header":"true",
@@ -104,11 +114,12 @@ class Activity:
       "incoming_call",
       "webclick"
     ],
-    "transform":{
+    "field_mapping":{
       "email_event_id": "email_event_id",
       "mastered_person_id": "mastered_person_id",
       "source_person_id": "source_person_id",
       "source_activity_id":"source_activity_id",
+      "data_source":"data_source",
       "subject_line": "subject_line",
       "asset_id": "asset_id",
       "asset_name": "asset_name",
@@ -143,13 +154,14 @@ class Activity:
       "gender_code":"gender_code",
       "birth_date":"birth_date",
       "home_phone":"home_phone",
-      "primary_email":"primary_email"
+      "primary_email":"primary_email",
     },
     "reorder":[
       "email_event_id",
       "mastered_person_id",
       "source_person_id",
       "source_activity_id",
+      "data_source",
       "subject_line",
       "asset_id",
       "asset_name",
@@ -184,13 +196,18 @@ class Activity:
       "gender_code",
       "birth_date",
       "home_phone",
-      "primary_email"
+      "primary_email",
+      "base_activity_type",
+      "base_activity_id",
+      "create_datetime",
+      "update_datetime"
     ],
     "email_sent": {
       "hash":"email_event_id",
       "mandatory": [
         "email_event_id",
         "source_person_id",
+        "data_source",
         "subject_line",
         "asset_id",
         "asset_name",
@@ -204,6 +221,7 @@ class Activity:
       "mandatory": [
         "email_event_id",
         "source_person_id",
+        "data_source",
         "subject_line",
         "asset_id",
         "asset_name",
@@ -217,6 +235,7 @@ class Activity:
       "mandatory": [
         "email_event_id",
         "source_person_id",
+        "data_source",
         "subject_line",
         "asset_id",
         "asset_name",
@@ -231,6 +250,7 @@ class Activity:
       "mandatory":[
         "source_person_id",
         "source_activity_id",
+        "data_source",
         "phone_number_to",
         "phone_number_from",
         "call_tracking_number",
@@ -256,6 +276,7 @@ class Activity:
       "mandatory":[
         "source_person_id",
         "source_activity_id",
+        "data_source",
         "activity_type",
         "activity_datetime",
         "referrer_url",
@@ -277,12 +298,14 @@ class Activity:
       ]
     },
     "validate_date":{
-      "pattern":'yyyy-MM-dd',
+      "formats":["yyyy-MM-dd", "yyyy/MM/dd", "MM/dd/yyyy", "dd/MM/yyyy", "dd-MM-yyyy"],
+      "pattern":"yyyy-MM-dd",
       "fields":[
         "birth_date"
       ]
     },
     "validate_datetime":{
+      "formats":["yyyy-MM-dd HH:mm:ss", "yyyy/MM/dd HH:mm:ss", "MM/dd/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss", "HH:mm:ss yyyy-MM-dd", "HH:mm:ss yyyy/MM/dd", "HH:mm:ss MM/dd/yyyy", "HH:mm:ss dd/MM/yyyy", "HH:mm:ss dd-MM-yyyy"],
       "pattern":"yyyy-MM-dd HH:mm:ss",
       "fields":[
         "email_sent_datetime",
@@ -295,7 +318,7 @@ class Activity:
       ]
     },
     "validate_url":{
-      "pattern":"((http|https)://)(www.)?[a-zA-Z0-9@:%._\\+~#?&//=]{2,256}\\.[a-z]{2,6}\\b([-a-zA-Z0-9@:%._\\+~#?&//=]*)",
+      "pattern":"((http|https)://)?(www.)?[a-zA-Z0-9@:%._+~#?&/=]{2,256}[.]{1}[a-z]{2,6}[-a-zA-Z0-9@:%._+~#?&/=]*",
       "fields":[
         "email_web_url",
         "email_clicked_through_url",
@@ -321,22 +344,29 @@ class Activity:
   def __init__(self, cust_code, lookup):
     self.cust_code = cust_code
     self.lookup = lookup
-    self.actCDMPATH = "/delta/{}/actCDM".format(cust_code)
-    self.activityCDM = spark.createDataFrame(self.emptyRDD, self.schema)
+    self.CDMPATH = "/delta/{}/CDM".format(cust_code)
+    self.errorPATH = "/delta/{}/error".format(cust_code)
+    self.resPATH = "/delta/{}/res".format(cust_code)
+    self.dfPATH = "/delta/{}/df".format(cust_code)
     self.error_df = spark.createDataFrame(self.emptyRDD, self.errschema)
-    print('createdActivity object with cust_code', cust_code)
-    
-  def error_text(self, s):
-    return "_".join(["WRONG", s.upper(), "FORMAT"])
-
-  def transform(self, df):
-    for k, v in self.config['transform'].items():
+    try:
+      self.error_df.write.format('delta').save(self.errorPATH)
+    except:
+      print('Error DeltaTAble already exists')
+    print('created Activity object with cust_code', cust_code)
+  
+  def __field_map(self, df):
+    for k, v in self.config['field_mapping'].items():
       if v in df.columns:
         df = df.withColumnRenamed(v, k).withColumn(k, trim(col(k)))
       else:
         df = df.withColumn(k, lit(None))
-    res = self.activityCDM
-    df = df.select(self.config['reorder']).withColumn('base_activity_type', lit(None))
+    df = df.withColumn('base_activity_type', lit(None)).withColumn('base_activity_id', lit(None)) # 41 columns
+    print("exiting with", len(df.columns), "columns")
+    return df
+  
+  def __group(self, df):
+    res = self.emptyCDM
     for typ in self.config['base_activity_types']:
       temp = df
       for x in self.config[typ]['mandatory']:
@@ -345,30 +375,77 @@ class Activity:
       temp = temp.withColumn('base_activity_type', lit(typ))
       print(temp.count(), typ)
       res = res.union(temp)
-    err = df.withColumn('error_type', lit("UNCLASSIFIABLE"))
+    err = df.withColumn('error_type', lit("UNCLASSIFIABLE_ACTIVITY"))
     self.error_df = self.error_df.union(err)
     return res
   
-  def validate_date(self, df):
-    res = self.activityCDM
+  def __generate_unique_id(self, df):
+    res = self.emptyCDM
+    for typ in self.config['base_activity_types']:
+      temp = df.where(col('base_activity_type')==typ)/
+      .withColumn('base_activity_id', /
+                  lit(md5(concat(/
+                                 col('source_person_id'), /
+                                 col('base_activity_type'), /
+                                 col(self.config[typ]['hash'])/
+                                ))))
+      res = res.union(temp)
+    return res
+  
+  def __add_metadata(self, df):
+    df = df.withColumn('create_datetime', date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss'))/
+    .withColumn('update_datetime', date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss'))
+    return df
+  
+  def __reorder(self, df):
+    df = df.select(self.config['reorder'])
+    return df
+    
+  def transform(self, df):
+    res = self.__field_map(df)
+    res = self.__group(res)
+    res = self.__generate_unique_id(res)
+    res = self.__add_metadata(res)
+    res = self.__reorder(res)
+    return res
+  
+  def clear_delta(self, path):
+    dbutils.fs.rm(path, recurse=True)
+    
+  def drop_table(self, name):
+    spark.sql("drop table if exists {}".format(name))
+    
+  def create_table(self, name, path):
+    self.drop_table(name)
+    spark.sql('create table {} using delta location "{}"'.format(name, path))
+  
+  def __validate_date(self, df):
+    print('date')
+    res = self.emptyCDM
+    formats = self.config['validate_date']['formats']
     pattern = self.config['validate_date']['pattern']
+    print(pattern)
     for typ in self.config['base_activity_types']:
       temp = df.where(col('base_activity_type')==typ)
       if(temp.count()==0):
         continue
       for k in self.config['validate_date']['fields']:
         if k in self.config[typ]['mandatory']:
-          temp = temp.withColumn(k, to_date(k, pattern))
-          valid = temp.where(col(k).isNotNUll())
-          err = temp.where(col(k).isNull()).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          print(k, "in mandatory")
+          # temp = temp.where(col(k).rlike(r'\d{1}\D*\d{1}\D*\d{1}\D*\d{1}\D*\d{1}\D*\d{1}')).withColumn(k, date_format(coalesce(*[to_date(k, f) for f in formats]), pattern))
+          temp = temp.withColumn(k, date_format(coalesce(*[to_date(k, f) for f in formats]), pattern))
+          valid = temp.where(col(k).isNotNull())
+          err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
           self.error_df = self.error_df.union(err)
           temp = valid
       print(temp.count(), typ)
       res = res.union(temp)
     return res
   
-  def validate_datetime(self, df):
-    res = self.activityCDM
+  def __validate_datetime(self, df):
+    print('datetime')
+    res = self.emptyCDM
+    formats = self.config['validate_datetime']['formats']
     pattern = self.config['validate_datetime']['pattern']
     for typ in self.config['base_activity_types']:
       temp = df.where(col('base_activity_type')==typ)
@@ -376,68 +453,74 @@ class Activity:
         continue
       for k in self.config['validate_datetime']['fields']:
         if k in self.config[typ]['mandatory']:
-          temp = temp.withColumn(k, to_date(k, pattern))
+          print(k, "in mandatory")
+          temp = temp.withColumn(k, date_format(coalesce(*[to_date(k, f) for f in formats]), pattern))
+          display(temp)
           valid = temp.where(col(k).isNotNull())
           err = temp.where(col(k).isNull()).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          print(err.count(), "invalid")
           self.error_df = self.error_df.union(err)
           temp = valid
       print(temp.count(), typ)
       res = res.union(temp)
     return res
 
-  def validate_url(self, df):
-    regex=""
-    pattern=r'{}'.format(regex)
-    res = self.activityCDM
+  def __validate_url(self, df):
+    print('url')
+    pattern=r'{}'.format(self.config['validate_url']['pattern'])
+    res = self.emptyCDM
     for typ in self.config['base_activity_types']:
       temp = df.where(col('base_activity_type')==typ)
       if(temp.count()==0):
         continue
       for k in self.config['validate_url']['fields']:
-        print("field", k)
         if k in self.config[typ]['mandatory']:
           print("field in mandatory", k)
           valid = temp.where(col(k).rlike(pattern))
-          print("valid", valid.count(), typ, k)
-          err = temp.subtract(valid)
-          print("error", err.count(), typ, k)
-          err = err.withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
-          self.error_df = self.error_df.union(err)
-          temp = valid
-      res = res.union(temp)
-      print(temp.count(), typ)
-    return res
-
-  def validate_email(self, df):
-    pattern = r'{}'.format(self.config['validate_email']['pattern'])
-    res = self.activityCDM
-    for typ in self.config['base_activity_type']:
-      temp = df.where(col('base_activity_type')==typ)
-      if(temp.count()==0):
-        continue
-      for k in self.config['validate_email']['fields']:
-        if k in self.config[typ]['mandatory']:
-          valid = temp.where(col(k).rlike(pattern))
-          err = temp.where(~col(k).rlike(pattern)).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          print(err.count(), "invalid")
           self.error_df = self.error_df.union(err)
           temp = valid
       res = res.union(temp)
       print(temp.count(), typ)
     return res
   
-  def validate_phone(self, df):
-    res = self.activityCDM
-    pattern = self.config['validate_phone']['pattern']
-    for typ in self.config['base_activity_type']:
+  def __validate_email(self, df):
+    print('email')
+    pattern = r'{}'.format(self.config['validate_email']['pattern'])
+    res = self.emptyCDM
+    for typ in self.config['base_activity_types']:
+      temp = df.where(col('base_activity_type')==typ)
+      if(temp.count()==0):
+        continue
+      for k in self.config['validate_email']['fields']:
+        if k in self.config[typ]['mandatory']:
+          print(k, "in mandatory")
+          valid = temp.where(col(k).rlike(pattern))
+          err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          print(err.count(), "invalid")
+          self.error_df = self.error_df.union(err)
+          temp = valid
+      res = res.union(temp)
+      print(temp.count(), typ)
+    return res
+  
+  def __validate_phone(self, df):
+    print('phone')
+    res = self.emptyCDM
+    pattern = r'{}'.format(self.config['validate_phone']['pattern'])
+    for typ in self.config['base_activity_types']:
       temp = df.where(col('base_activity_type')==typ)
       if(temp.count()==0):
         continue
       # temp = spark.sql("")
-      for k in self.config['validate_date']['fields']:
+      for k in self.config['validate_phone']['fields']:
         if k in self.config[typ]['mandatory']:
-          temp = temp.withColumn(k, regexp_replace(col(k), r'-', ''))
+          print(k, "in mandatory")
+          # temp = temp.withColumn(k, regexp_replace(col(k), r'-', ''))
           valid = temp.where(col(k).rlike(pattern))
-          err = temp.where(~col(k).rlike(pattern)).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+          print(err.count(), "invalid")
           self.error_df = self.error_df.union(err)
           temp = valid
       res = res.union(temp)
@@ -445,46 +528,67 @@ class Activity:
     return res
     
   def cleanse(self, df):
-    newdf = self.validate_date(df)
-    newdf = self.validate_datetime(df)
-    newdf = self.validate_url(newdf)
-    newdf = self.validate_email(newdf)
-    newdf = self.validate_phone(newdf)
+    newdf = self.__validate_date(df)
+    newdf = self.__validate_datetime(newdf)
+    newdf = self.__validate_url(newdf)
+    newdf = self.__validate_email(newdf)
+    newdf = self.__validate_phone(newdf)
     return newdf
-  def create_base_CDM(self):
-    self.activityCDM.write.format('delta').save(self.actCDMPATH)
+  
+  def __create_base_CDM(self):
+    self.emptyCDM.write.format('delta').save(self.CDMPATH)
 
-  def clear_delta(self, path):
-    dbutils.fs.rm(path, recurse=True)
-
-  def add_to_CDM(self, df):
+  def __remaster(self, df):
+    # get valid and invalid datasets
     valid = df.where(col('mastered_person_id').isNotNull())
-    self.activityCDM = self.activityCDM.union(valid)
     invalid = df.where(col('mastered_person_id').isNull())
+    
+    # clear any possible old data
     remasterPATH = '/delta/{}/remaster'.format(self.cust_code)
-    self.clear_delta(remasterPATH)
+    self.__clear_delta(remasterPATH)
+    
+    # update mastered_person_id from lookup table
     invalid.write.format('delta').save(remasterPATH)
-
-    remaster = DeltaTable.forPath(spark, remasterPATH)
-    remaster.alias("rm").merge(
-        self.lookup.alias("lp"),
-        "rm.source_person_id = lp.source_percon_id")\
-            .whenMatchedUpdate(set = {'mastered_person_id':'lp.mastered_person_id'})\
-                .execute()
-    # append remaster to activityCDM
-    valid.write.format('delta').mode('append').save(self.actCDMPATH)
-
+    remasterDelta = DeltaTable.forPath(spark, remasterPATH)
+    remasterDelta.alias("rm").merge(
+      self.lookup.alias("lp"),
+      "rm.source_person_id = lp.source_person_id")\
+      .whenMatchedUpdate(set = {'mastered_person_id':'lp.mastered_person_id'})\
+      .execute()
+    # combine valid and invalid datasets
+    remasterDelta.alias("rm").merge(
+      valid.alias("v"),
+      "rm.base_activity_id = v.base_activity_id")\
+      .whenNotMatchedInsertAll()\
+      .execute()
+   
+    # return location of new dataset
+    return remasterPATH
+  
+  def __merge_into_CDM(self, remasterPATH):
+    # check if CDM already exists at location
+    if(not DeltaTable.isDeltaTable(spark, self.CDMPATH)):
+      self.__create_base_CDM()
+    else:
+      print("CDM already exists at", self.CDMPATH)
+      
+    #read data at DeltaTable location into DataFrame
+    newdt = spark.read.format('delta').load(remasterPATH)
+    
+    # merge new dataset into CDM DeltaTable
+    CDMDelta = DeltaTable.forPath(spark, self.CDMPATH)
+    CDMDelta.alias("cdm").merge(
+      newdt.alias("new"),
+      "new.base_activity_id=cdm.base_activity_id")\
+      .whenNotMatchedInsertAll().execute()
+    
+  def add_to_CDM(self, df):
+    remasterPATH = self.__remaster(df)
+    self.__merge_into_CDM(remasterPATH)
+    
   def show_errors(self):
-    display(self.error_df)   
-  
-  
-  ######driver code######
-  # test DataFrame is df
-  # lookupdf is as uploaded
-  # cut_code is any random string
-  ob = Activity(cust_code, lookupdf)
-  transdf = ob.transform(df) # do not skip this
-  # url_df = ob.validate_url(transdf)
-  # email_df = ob.validate_email(transdf)
-  # please cheack the other validate functions too
-  
+    display(self.error_df)
+    
+  def get_CDM(self):
+    CDM = spark.read.format('delta').load(self.CDMPATH)
+    return CDM
