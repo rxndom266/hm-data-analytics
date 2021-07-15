@@ -18,7 +18,7 @@ class TransformActivity:
         df = df.withColumnRenamed(v, k).withColumn(k, trim(col(k)))
       else:
         df = df.withColumn(k, lit(None))
-    df = df.withColumn('base_activity_type', lit(None)).withColumn('base_activity_id', lit(None)) # 41 columns
+    df = df.withColumn('base_activity_type', lit(None)).withColumn('base_activity_id', lit(None))
     print("exiting with", len(df.columns), "columns")
     self.emptyCDM = spark.createDataFrame(self.emptyRDD, df.schema)
     self.errorlog = self.emptyCDM.withColumn('error_type', lit(None))
@@ -58,7 +58,7 @@ class TransformActivity:
     res = self.group(res)
     res = self.generate_unique_id(res)
     res = self.add_metadata(res)
-    return res
+    return res, errorlog
   
   
 activity_transform_config = {
