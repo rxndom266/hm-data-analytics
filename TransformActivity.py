@@ -18,10 +18,15 @@ class TransformActivity:
         df = df.withColumnRenamed(v, k).withColumn(k, trim(col(k)))
       else:
         df = df.withColumn(k, lit(None))
-    df = df.withColumn('base_activity_type', lit(None)).withColumn('base_activity_id', lit(None))
+    df = df.withColumn('base_activity_type', lit(None)).withColumn('base_activity_id', lit(None)) # 42 columns
     print("exiting with", len(df.columns), "columns")
-    self.emptyCDM = spark.createDataFrame(self.emptyRDD, df.schema)
-    self.errorlog = self.emptyCDM.withColumn('error_type', lit(None))
+    return df
+  
+  def add_metadata(self, df):
+    df = df.withColumn('create_datetime', date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss'))\
+    .withColumn('update_datetime', date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss')) # 44 columns
+    self.emptyCDM = spark.createDataFrame(self.emptyRDD, df.schema) # 44 columns
+    self.errorlog = self.emptyCDM.withColumn('error_type', lit(None)) # 45 columns
     return df
   
   def group(self, df):
@@ -48,17 +53,13 @@ class TransformActivity:
       res = res.union(temp)
     return res
   
-  def add_metadata(self, df):
-    df = df.withColumn('create_datetime', date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss'))\
-    .withColumn('update_datetime', date_format(current_timestamp(), 'yyyy-MM-dd HH:mm:ss'))
-    return df
-  
   def transform(self):
     res = self.field_map(self.inputdf)
+    res = self.add_metadata(res)
     res = self.group(res)
     res = self.generate_unique_id(res)
-    res = self.add_metadata(res)
-    return res, errorlog
+    
+    return res, self.errorlog
   
   
 activity_transform_config = {
