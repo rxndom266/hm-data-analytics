@@ -1,3 +1,155 @@
+act_trans_conf = {
+    "aws":{
+      "bucket_name":"hmtrialbucket",
+      "access_key":"AKIAWBVDMM4G6A53OL4O",
+      "secret_key":"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"
+    },
+    "base_activity_types":[
+      "email_sent",
+      "email_open",
+      "email_clickthrough",
+      "incoming_call",
+      "webclick"
+    ],
+    "fields":{
+      "email_event_id": "email_event_id",
+      "mastered_person_id": "mastered_person_id",
+      "source_person_id": "source_person_id",
+      "source_activity_id":"source_activity_id",
+      "data_source":"data_source",
+      "subject_line": "subject_line",
+      "asset_id": "asset_id",
+      "asset_name": "asset_name",
+      "email_sent_datetime": "email_sent_datetime",
+      "email_opened_datetime": "email_opened_datetime",
+      "email_clickthrough_datetime": "email_clickthrough_datetime",
+      "email_web_url": "email_web_url",
+      "email_clicked_through_url": "email_clicked_through_url",
+      "campaign_id": "campaign_id",
+      "phone_number_to":"phone_number_to",
+      "phone_number_from":"phone_number_from",
+      "call_tracking_number":"call_tracking_number",
+      "direction":"direction",
+      "call_status_code":"call_status_code",
+      "call_start_datetime":"call_start_datetime",
+      "call_end_datetime":"call_end_datetime",
+      "call_duration":"call_duration",
+      "activity_type":"activity_type",
+      "activity_datetime":"activity_datetime",
+      "referrer_url":"referrer_url",
+      "landing_page_url":"landing_page_url",
+      "page_visited":"page_visited",
+      "number_of_pages":"number_of_pages",
+      "start_datetime":"start_datetime",
+      "end_datetime":"end_datetime",
+      "first_name":"first_name",
+      "last_name":"last_name",
+      "street_address_1":"street_address_1",
+      "city":"city",
+      "state_province":"state_province",
+      "postal_code":"postal_code",
+      "gender_code":"gender_code",
+      "birth_date":"birth_date",
+      "home_phone":"home_phone",
+      "primary_email":"primary_email",
+    },
+    "email_sent": {
+      "hash":"email_event_id",
+      "mandatory": [
+        "email_event_id",
+        "source_person_id",
+        "data_source",
+        "subject_line",
+        "asset_id",
+        "asset_name",
+        "email_sent_datetime",
+        "email_web_url",
+        "campaign_id"
+      ]
+    },
+    "email_open": {
+      "hash":"email_event_id",
+      "mandatory": [
+        "email_event_id",
+        "source_person_id",
+        "data_source",
+        "subject_line",
+        "asset_id",
+        "asset_name",
+        "email_opened_datetime",
+        "email_web_url",
+        "campaign_id"
+      ]
+    },
+    "email_clickthrough": {
+      "hash":"email_event_id",
+      "mandatory": [
+        "email_event_id",
+        "source_person_id",
+        "data_source",
+        "subject_line",
+        "asset_id",
+        "asset_name",
+        "email_clickthrough_datetime",
+        "email_web_url",
+        "email_clicked_through_url",
+        "campaign_id"
+      ],
+    },
+    "incoming_call":{
+      "hash":"source_activity_id",
+      "mandatory":[
+        "source_person_id",
+        "source_activity_id",
+        "data_source",
+        "phone_number_to",
+        "phone_number_from",
+        "call_tracking_number",
+        "direction",
+        "call_status_code",
+        "call_start_datetime",
+        "call_end_datetime",
+        "campaign_id",
+        "first_name",
+        "last_name",
+        "street_address_1",
+        "city",
+        "state_province",
+        "postal_code",
+        "gender_code",
+        "birth_date",
+        "home_phone",
+        "primary_email"
+      ]
+    },
+    "webclick":{
+      "hash":"source_activity_id",
+      "mandatory":[
+        "source_person_id",
+        "source_activity_id",
+        "data_source",
+        "activity_type",
+        "activity_datetime",
+        "referrer_url",
+        "landing_page_url",
+        "page_visited",
+        "number_of_pages",
+        "start_datetime",
+        "end_datetime",
+        "first_name",
+        "last_name",
+        "street_address_1",
+        "city",
+        "state_province",
+        "postal_code",
+        "gender_code",
+        "birth_date",
+        "home_phone",
+        "primary_email"
+      ]
+    }
+}
+
 from pyspark.sql.functions import col, lit, trim, current_timestamp, date_format, md5, concat
 from delta.tables import *
 import urllib
