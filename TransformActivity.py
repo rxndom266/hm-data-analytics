@@ -90,4 +90,4 @@ class TransformActivity:
     return self.deltapath, self.rejectpath
   
 ob = TransformActivity(act_trans_conf, 'incoming_call', 'ANK266')
-traspath, rejectpath = ob.(df)
+traspath, rejectpath = ob.transform(df)
