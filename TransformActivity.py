@@ -1,8 +1,8 @@
 act_trans_conf = {
     "aws":{
       "bucket_name":"hmtrialbucket",
-      "access_key":"AKIAWBVDMM4G6A53OL4O",
-      "secret_key":"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"
+      "access_key":"********",
+      "secret_key":"********"
     },
     "base_activity_types":[
       "email_sent",
@@ -168,13 +168,13 @@ class TransformActivity:
     self.deltapath = "/delta/{}/{}/transform".format(cust_code, load_type)
     self.rejectpath = "/delta/{}/{}/reject".format(cust_code, load_type)
     
-  def mountbkt(self):
+  def mountfile(self):
     access_key = self.config['aws']['access_key']
     secret_key = self.config['aws']['secret_key'].replace("/","%2F")
     encoded_secret_key = urllib.parse.quote(secret_key,"")
-    AWS_s3_bucket=self.config['aws']['bucket_name']
     folder = self.cust_code
-    mount_name = "{}/{}".format(folder, self.load_type)
+    AWS_s3_bucket = "{}/{}".format(self.config['aws']['bucket_name'], folder)
+    mount_name = self.load_type
     sourceurl="s3a://{0}:{1}@{2}".format(access_key,encoded_secret_key,AWS_s3_bucket)
     dbutils.fs.mount(sourceurl,"/mnt/%s" %mount_name)
     self.mountpath = "/mnt/{}".format(mount_name)
