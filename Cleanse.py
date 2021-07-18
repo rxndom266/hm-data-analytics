@@ -1,107 +1,6 @@
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-from pyspark.sql.functions import col, lit, to_date, trim, md5, concat, date_format, coalesce, current_date, date_sub, current_timestamp
-import re
+# cleanse operation is after transform operation
 
-class Cleanse:
-  
-  emptyRDD = spark.sparkContext.emptyRDD()
-  
-  def __init__(self, config, load_type, inputdf, cust_code, errorlog = 'null'):
-    self.config = config
-    self.load_type = load_type
-    self.cust_code = cust_code
-    self.schema = inputdf.schema
-    self.emptyCDM = spark.createDataFrame(self.emptyRDD, self.schema)
-    if(errorlog=='null'):
-      self.errorlog = self.emptyCDM.withColumn('error_type', lit(None))
-    else:
-      self.errorlog = errorlog
-    self.deltaPATH = '/delta/{}/{}/temp'.format(self.cust_code, self.load_type)
-    
-  def remove_null(self, df):
-    temp = df
-    for k in self.config['mandatory']:
-      err = temp.where(col(k).isNull())
-      temp = temp.subtract(err)
-      err = err.withColumn('error_type', lit("_".join(["MISSING", k.upper()])))
-      self.errorlog = self.errorlog.union(err)
-    return temp
-  
-  def optimise(self, temp):
-    df.write.format('delta').mode('overwrite').save(self.deltaPATH)
-    spark.sql("DROP TABLE  IF EXISTS temp")
-    spark.sql("CREATE TABLE temp USING DELTA LOCATION '{}'".format(self.deltaPATH))
-    spark.sql("OPTIMIZE temp ZORDER BY (base_activity_id)")
-    temp = spark.read.format('delta').load(self.deltaPATH)
-    return temp
-  
-  def validate_date(self, df):
-    print('date validation')
-    # formats = self.config['date']['formats']
-    pattern = self.config['date']['pattern']
-    temp = df
-    for k in self.config['date']['fields']:
-      valid = temp.where(col(k).isNull()) # not mandatory and null
-      res = res.union(valid)
-      check = temp.subtract(valid).withColumn(k, to_date(k, pattern)) # change format
-      err = check.where(col(k).isNull()).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"]))) # remove those with wrong format
-      self.errorlog = self.errorlog.union(err)
-      check = check.where(col(k).isNotNull())
-      temp = check.union(valid)
-    return temp
-  
-  def validate_datetime(self, df):
-    print('datetime validation')    
-    # formats = self.config['datetime']['formats']
-    pattern = self.config['datetime']['pattern']
-    temp = df
-    for k in self.config['datetime']['fields']:
-      print(k)
-      valid = temp.where(col(k).isNull()) # not mandatory and null
-      check = temp.where(col(k).isNotNull()).withColumn(k, to_date(k, pattern)) # change format
-      err = check.where(col(k).isNull()).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"]))) # remove those with wrong format
-      self.errorlog = self.errorlog.union(err)
-      print('added to errorlog')
-      check = check.where(col(k).isNotNull())
-      temp = check.union(valid)
-    return temp
-  
-  def validate_url(self, df):
-    print('url validation')
-    temp = df
-    pattern = r'{}'.format(self.config['url']['pattern'])
-    for k in self.config['url']['fields']:
-      valid = temp.where(col(k).isNull() | (col(k).isNotNull() & col(k).rlike(pattern))) # not mandatory and null OR not null and valid
-      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"]))) # remove those with wrong format
-      self.errorlog = self.errorlog.union(err)
-      temp = valid
-    return temp
-  
-  def validate_email(self, df):
-    print('email validation')
-    temp = df
-    pattern = r'{}'.format(self.config['email']['pattern'])
-    for k in self.config['email']['fields']:
-      valid = temp.where(col(k).isNull() | (col(k).isNotNull() & col(k).rlike(pattern))) # not mandatory and null OR not null and valid
-      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"]))) # remove those with wrong format
-      self.errorlog = self.errorlog.union(err)
-      temp = valid
-    return temp
-  
-  def validate_phone(self, df):
-    print('phone validation')
-    pattern = r'{}'.format(self.config['phone']['pattern'])
-    for k in self.config['phone']['fields']:
-      valid = temp.where(col(k).isNull() | (col(k).isNotNull() & col(k).rlike(pattern))) # not mandatory and null OR not null and valid
-      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"]))) # remove those with wrong format
-      self.errorlog = self.errorlog.union(err)
-      temp = valid
-    return temp
-  
-  
-  
-  
-activity_cleanse_config = {
+act_cleanse_config = {
   "mandatory":[
     "base_activity_id"
   ],
@@ -151,9 +50,105 @@ activity_cleanse_config = {
   }
 }
 
+from pyspark.sql.functions import col, lit, to_date, trim, md5, concat, date_format, coalesce, current_date, date_sub, current_timestamp
+from delta.tables import *
+import re
+
+null='--'
+spark.conf.set("spark.sql.legacy.timeParserPolicy","CORRECTED")
+
+class Cleanse:
+  
+  emptyRDD = spark.sparkContext.emptyRDD()
+  
+  def __init__(self, config, load_type, cust_code, rejectpath = 'null'):
+    self.config = config
+    self.load_type = load_type
+    self.cust_code = cust_code
+    self.deltapath = '/delta/{}/{}/clean'.format(self.cust_code, self.load_type)
+    self.rejectpath = rejectpath
+  
+  def purge(self):
+    dbutils.fs.rm(self.deltapath)
+    
+  def cleanse(self, dfpath):
+    temp = spark.read.format('delta').load(dfpath)
+    
+    if(self.rejectpath=='null'):
+      path = "/delta/{}/{}/reject".format(cust_code, load_type)
+      if(not DeltaTable.isDeltaTable(spark, path)):
+        spark.createDataFrame(self.emptyRDD, df.schema).withColumn('error_type', lit(null)).write.format('delta').save(path)
+      self.rejectpath = path
+    rejectDelta = DeltaTable.forPath(spark, self.rejectpath)
+    
+    for k in self.config['mandatory']:
+      err = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)==''))
+      temp = temp.subtract(err)
+      err = err.withColumn('error_type', lit("_".join(["MISSING", k.upper()])))
+      rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+    
+    print('date validation')
+    # formats = self.config['date']['formats']
+    pattern = self.config['date']['pattern']
+    for k in self.config['date']['fields']:
+      valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='')) # not mandatory and null
+      check = temp.subtract(valid).withColumn(k, to_date(k, pattern)) # change format
+      err = check.where(col(k).isNull())
+      check = check.subtract(err)
+      err = err.withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+      rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+      temp = check.union(valid)
+      
+    print('datetime validation')    
+    # formats = self.config['datetime']['formats']
+    pattern = self.config['datetime']['pattern']
+    for k in self.config['datetime']['fields']:
+      print(k)
+      valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (to_date(k, pattern).isNotNull())) # not mandatory and null
+      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+      rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+      print('added to errorlog')
+      
+    print('url validation')
+    pattern = r'{}'.format(self.config['url']['pattern'])
+    for k in self.config['url']['fields']:
+      print(k)
+      valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (col(k).rlike(pattern))) # not mandatory and null OR not null and valid
+      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+      rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+      temp = valid
+      
+    print('email validation')
+    pattern = r'{}'.format(self.config['email']['pattern'])
+    for k in self.config['email']['fields']:
+      print(k)
+      valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (col(k).rlike(pattern))) # not mandatory and null OR not null and valid
+      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+      rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+      temp = valid
+      
+    print('phone validation')
+    pattern = r'{}'.format(self.config['phone']['pattern'])
+    for k in self.config['phone']['fields']:
+      print(k)
+      valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (col(k).rlike(pattern))) # not mandatory and null OR not null and valid
+      err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
+      rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+      temp = valid
+    
+    try:
+      temp.write.format('delta').save(self.deltapath)
+    except:
+      cleanDelta = DeltaTable.forPath(self.deltapath)
+      cleanDelta.alias('del').merge(temp.alias('dat'), 'del.base_activity_id = dat.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+    
+    return self.deltapath, self.rejectpath
+  
+
 # driver code
 
 inputdf = # output res from transform
 errorlog = # output errorlog from transform
 
-ob = Cleanse()
+cob = Cleanse(act_cleanse_config, 'incoming_call', 'ANK266', rejectpath) # output rejectpath from transform operation
+cleanpath, rejectpath = cob.cleanse(transpath) # output transpath from transform operation
