@@ -33,7 +33,6 @@ pipeline_config = {
   'batch_datetime': datetime.now()
   
 }
+from activity import Activity
 
-import activity.Activity
-
-driver(pipeline_config)
+Activity.driver(pipeline_config)
