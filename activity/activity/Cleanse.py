@@ -1,11 +1,11 @@
-from pyspark.sql.functions import col, lit, to_date, date_format
+from pyspark.sql.functions import col, lit, date_format, coalesce, to_timestamp, to_date
 from delta.tables import *
 import re
 
 spark = SparkSession \
     .builder \
     .appName("Cleanse") \
-    .config("spark.sql.legacy.timeParserPolicy", "CORRECTED") \
+    .config("spark.sql.legacy.timeParserPolicy", "LEGACY") \
     .getOrCreate()
 
 emptyRDD = spark.sparkContext.emptyRDD()
@@ -22,8 +22,7 @@ cleanseconfig = {
       ]
     },
     "datetime":{
-      "formats":["yyyy-MM-dd HH:mm:ss", "dd-MM-yyyy HH:mm:ss"],
-      "format":["yyyy-MM-dd HH:mm:ss", "yyyy/MM/dd HH:mm:ss", "MM/dd/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss", "HH:mm:ss yyyy-MM-dd", "HH:mm:ss yyyy/MM/dd", "HH:mm:ss MM/dd/yyyy", "HH:mm:ss dd/MM/yyyy", "HH:mm:ss dd-MM-yyyy"],
+      "formats":["yyyy-MM-dd HH:mm:ss", "yyyy/MM/dd HH:mm:ss", "MM/dd/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm:ss", "HH:mm:ss yyyy-MM-dd", "HH:mm:ss yyyy/MM/dd", "HH:mm:ss MM/dd/yyyy", "HH:mm:ss dd/MM/yyyy", "HH:mm:ss dd-MM-yyyy"],
       "pattern":"yyyy-MM-dd HH:mm:ss",
       "fields":[
         "email_sent_datetime",
@@ -104,9 +103,15 @@ def purge(path):
   dbutils.fs.rm(path)
   
 def cleanse(load_type, srcpath, destpath, rejectpath):
-  temp = spark.read.format('delta').load(srcpath)
-  rejectDelta = DeltaTable.forPath(spark, rejectpath)
   null='--'
+  temp = spark.read.format('delta').load(srcpath)
+  
+  try:
+    rejectDelta = DeltaTable.forPath(spark, rejectpath)
+  except:
+    rej = spark.createDataFrame(emptyRDD, temp.schema).withColumn('error_type', lit(null))
+    rej.write.format('delta').save(rejectpath)
+    rejectDelta = DeltaTable.forPath(spark, rejectpath)
   config = cleanseconfig[load_type]
   
   for k in config['mandatory']:
@@ -116,25 +121,25 @@ def cleanse(load_type, srcpath, destpath, rejectpath):
     rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
   
   print('date validation')
-  # formats = config['date']['formats']
+  formats = config['date']['formats']
   pattern = config['date']['pattern']
   for k in config['date']['fields']:
-    valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (to_date(k, pattern).isNotNull())) # not mandatory and null
+    valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | date_format(coalesce(*[to_date(k, f) for f in formats]), pattern).isNotNull()) # not mandatory and null
     err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
     rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
     temp = valid
     
   print('datetime validation')    
-  # formats = config['datetime']['formats']
+  formats = config['datetime']['formats']
   pattern = config['datetime']['pattern']
   for k in config['datetime']['fields']:
-    valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (date_format(k, pattern).isNotNull())) # not mandatory and null
+    valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | date_format(coalesce(*[to_timestamp(k, f) for f in formats]), pattern).isNotNull()) # not mandatory and null
     err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
     rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
     temp = valid
     
   print('url validation')
-  pattern = r'{}'.format(config['url']['pattern'])
+  pattern = config['url']['pattern']
   for k in config['url']['fields']:
     valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (col(k).rlike(pattern))) # not mandatory and null OR not null and valid
     err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
