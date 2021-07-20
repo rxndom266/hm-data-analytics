@@ -162,7 +162,7 @@ def purge(path):
 
 def transform(load_id, client_file_path, destpath, rejectpath):
 
-    df = spark.read.csv(client_file_path)
+    df = spark.read.csv(client_file_path, header='true', inferSchema='false')
     config = transconfig                    
     null = '--'
     
