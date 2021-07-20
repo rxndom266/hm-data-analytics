@@ -1,6 +1,6 @@
 def driver(config):
     client_code = config['client_code']
-    load_type = config['raw_input_format']
+    load_type = config['load_type']
     load_id = config['load_id']
     enrich_flag = config['enrich_flag']
     batch_datetime = config['batch_datetime']
