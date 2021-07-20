@@ -1,4 +1,4 @@
-from pyspark.sql.functions import col, lit, to_date
+from pyspark.sql.functions import col, lit, to_date, date_format
 from delta.tables import *
 import re
 
@@ -128,7 +128,7 @@ def cleanse(load_type, srcpath, destpath, rejectpath):
   # formats = config['datetime']['formats']
   pattern = config['datetime']['pattern']
   for k in config['datetime']['fields']:
-    valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (to_date(k, pattern).isNotNull())) # not mandatory and null
+    valid = temp.where((col(k)==null) | (col(k).isNull()) | (col(k)=='') | (date_format(k, pattern).isNotNull())) # not mandatory and null
     err = temp.subtract(valid).withColumn('error_type', lit("_".join(["WRONG", k.upper(), "FORMAT"])))
     rejectDelta.alias('rej').merge(err.alias('err'), 'rej.base_activity_id = err.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
     temp = valid
