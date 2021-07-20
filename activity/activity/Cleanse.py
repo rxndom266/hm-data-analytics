@@ -161,7 +161,7 @@ def cleanse(load_type, srcpath, destpath, rejectpath):
   try:
     temp.write.format('delta').save(destpath)
   except:
-    cleanDelta = DeltaTable.forPath(destpath)
+    cleanDelta = DeltaTable.forPath(spark, destpath)
     cleanDelta.alias('del').merge(temp.alias('dat'), 'del.base_activity_id = dat.base_activity_id').whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
   
   print('cleanse done')
