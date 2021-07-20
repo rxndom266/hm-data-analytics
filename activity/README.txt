@@ -1,4 +1,5 @@
 # run this code in Databricks notebook
+import random
 
 dbutils.widgets.text('client_code', 'null', 'Client Code') # any random string works
 dbutils.widgets.dropdown('load_type', 'activity', ['fb_person', 'ig_person', 'crm_person', 'activity'], 'Load Type') # one out of four types
@@ -15,7 +16,7 @@ load_id = str(random.randint(0, 99999999))
 data_source_code = dbutils.widgets.get('data_source_code')
 mount_root = dbutils.widgets.get('mount_root')
 for mnt in dbutils.fs.mounts():
-  if mnt.source = mount_root:
+  if mnt.source == mount_root:
     client_data_path = mnt.mountPoint
 file_name = dbutils.widgets.get('file_name')
 enrich_flag = dbutils.widgets.get('enrich_flag')
