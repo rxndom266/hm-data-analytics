@@ -197,7 +197,7 @@ def transform(load_id, client_file_path, destpath, rejectpath):
     for typ in config['base_activity_types']:
         temp = df
         for x in config[typ]['mandatory']:
-            temp = temp.where(col(x)!=null & col(k).isNotNull() & col(k)!='')
+            temp = temp.where((col(x)!=null) & (col(k).isNotNull()) & (col(k)!=''))
         df = df.subtract(temp)
         temp = temp.withColumn('base_activity_type', lit(typ))
         print(temp.count(), typ)
